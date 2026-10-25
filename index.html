@@ -26,6 +26,8 @@ iframe{width:100%;height:166px;border:0;border-radius:10px;background:#000}
 .vote{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .vote button{min-height:72px;border-radius:14px;border:0;font:900 22px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
 .dn{background:var(--down)}.upb{background:var(--up)}
+.upb[aria-pressed=true]{background:transparent;color:var(--up);box-shadow:inset 0 0 0 3px var(--up)}
+#skip{background:var(--fg);color:var(--ink);border-color:var(--fg);font:900 18px var(--display);letter-spacing:.06em;text-transform:uppercase}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row2 a,.row2 button{min-height:46px;border-radius:12px;border:1px solid var(--rule);background:transparent;color:var(--fg);font:600 14px var(--body);display:flex;align-items:center;justify-content:center;text-decoration:none}
 h2{font:900 22px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:8px 0 0}
@@ -44,8 +46,8 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offs
   <div class="meta"><div class="t" id="title">Tap the play button in the player to start</div><div class="g" id="genre"></div></div>
   <div class="sub" id="artist">Free downloads from this week's Hypeddit charts</div>
   <iframe id="sc" allow="autoplay" title="SoundCloud player"></iframe>
-  <div class="vote"><button class="dn" id="down" aria-label="Thumbs down">Nah</button><button class="upb" id="up" aria-label="Thumbs up">Keep</button></div>
-  <div class="row2"><button id="skip">Skip for now</button><a id="dl" target="_blank" rel="noopener">Free download</a></div>
+  <div class="vote"><button class="dn" id="down" aria-label="Thumbs down">Nah</button><button class="upb" id="up" aria-label="Keep this track" aria-pressed="false">Keep</button></div>
+  <div class="row2"><button id="skip">Next</button><a id="dl" target="_blank" rel="noopener">Free download</a></div>
 </section>
 <h2>Your sound so far</h2>
 <div class="style" id="style"><span>Thumb a few tracks and your style shows up here.</span></div>
@@ -72,8 +74,9 @@ const save=()=>{try{localStorage.setItem(K,JSON.stringify(P))}catch(e){}};
 const genres=['All',...new Set(ALL.map(t=>t.g))];
 $('genres').innerHTML=genres.map(g=>`<button class="chip" data-g="${g}" aria-pressed="${g===genre}">${g}</button>`).join('');
 $('genres').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;genre=b.dataset.g;[...$('genres').children].forEach(c=>c.setAttribute('aria-pressed',c===b));build();next()};
-function build(){queue=ALL.filter(t=>(genre==='All'||t.g===genre)&&!P[t.id]);for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]]}}
-function show(meta){$('title').textContent=meta.title||'Loading';$('artist').textContent=meta.artist||'';$('genre').textContent=cur?cur.g:''}
+function build(){const heard=new Set(H.map(h=>h.id));queue=ALL.filter(t=>(genre==='All'||t.g===genre)&&!P[t.id]&&!heard.has(t.id));if(!queue.length)queue=ALL.filter(t=>(genre==='All'||t.g===genre)&&!P[t.id]);for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]]}}
+function upState(){const k=!!(cur&&P[cur.id]&&P[cur.id].v==='up');$('up').setAttribute('aria-pressed',k);$('up').textContent=k?'Kept':'Keep'}
+function show(meta){upState();$('title').textContent=meta.title||'Loading';$('artist').textContent=meta.artist||'';$('genre').textContent=cur?cur.g:''}
 function next(auto,pick){
   cur=pick||queue.shift();
   if(cur){setNow(cur.id);H=H.filter(h=>h.id!==cur.id);H.unshift({id:cur.id,t:cur.t,a:cur.a,g:cur.g,dl:cur.dl,at:Date.now()});saveH();renderH()}
@@ -87,7 +90,7 @@ function next(auto,pick){
   } else widget.load(url,{auto_play:true,color:'#ffb547',hide_related:true,show_comments:false,show_reposts:false,visual:false,callback:meta});
 }
 function meta(){widget.getCurrentSound(s=>{if(!s||!cur)return;cur.title=cur.t||s.title;cur.artist=s.user&&s.user.username;cur.sg=s.genre||'';cur.tags=(s.tag_list||'').match(/"[^"]+"|\S+/g)||[];cur.url=s.permalink_url;show({title:cur.title,artist:cur.artist+(s.genre?' · '+s.genre:'')})})}
-function vote(v){if(!cur)return;P[cur.id]={v,title:cur.t||cur.title||'',artist:cur.a||cur.artist||'',g:cur.g,sg:cur.sg||'',tags:(cur.tags||[]).slice(0,8).map(x=>x.replace(/"/g,'')),dl:cur.dl,url:cur.url||''};save();const h=H.find(x=>x.id===cur.id);if(h){h.v=v;saveH()}render();renderH();next()}
+function vote(v){if(!cur)return;if(v==='up'&&P[cur.id]&&P[cur.id].v==='up'){delete P[cur.id];save();const h0=H.find(x=>x.id===cur.id);if(h0){delete h0.v;saveH()}render();renderH();upState();return}P[cur.id]={v,title:cur.t||cur.title||'',artist:cur.a||cur.artist||'',g:cur.g,sg:cur.sg||'',tags:(cur.tags||[]).slice(0,8).map(x=>x.replace(/"/g,'')),dl:cur.dl,url:cur.url||''};save();const h=H.find(x=>x.id===cur.id);if(h){h.v=v;saveH()}render();renderH();upState();if(v==='down')next()}
 $('up').onclick=()=>vote('up');$('down').onclick=()=>vote('down');$('skip').onclick=()=>next();
 function profile(){const sc={};const add=(k,w)=>{k=(k||'').toLowerCase().trim();if(!k||k.length<3||/free|download|hypeddit|^\d+$/.test(k))return;sc[k]=(sc[k]||0)+w};
   Object.values(P).forEach(p=>{const w=p.v==='up'?1:-1;add(p.sg,w*2);add(p.g,w);(p.tags||[]).forEach(t=>add(t,w));add(p.artist,w*1.5)});
