@@ -23,6 +23,9 @@ h1{font:900 36px/1 var(--display);text-transform:uppercase;margin:0;letter-spaci
 .meta .t{font-weight:700;font-size:17px;overflow-wrap:anywhere}.meta .g{color:var(--amber);font:700 12px var(--display);letter-spacing:.14em;text-transform:uppercase;flex:none}
 .sub{color:var(--mute);font-size:13px;margin-top:-8px;overflow-wrap:anywhere}
 .player{position:relative}iframe{width:100%;height:166px;border:0;border-radius:10px;background:#000;display:block}
+.armnote{display:grid;gap:8px}.armnote button{min-height:44px;border-radius:12px;border:1px dashed var(--amber);background:transparent;color:var(--amber);font:600 14px var(--body)}
+.armnote p{margin:0;color:var(--mute);font-size:12px}
+iframe.arming{margin-top:8px}
 iframe.standby{position:absolute;left:-10000px;top:0;width:320px;pointer-events:none}
 .vote{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .vote button{min-height:72px;border-radius:14px;border:0;font:900 22px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
@@ -49,6 +52,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offs
   <div class="meta"><div class="t" id="title">Tap the play button in the player to start</div><div class="g" id="genre"></div></div>
   <div class="sub" id="artist">Free downloads from this week's Hypeddit charts</div>
   <div class="player"><iframe id="sc0" allow="autoplay" title="SoundCloud player"></iframe><iframe id="sc1" class="standby" allow="autoplay" title="Next track, preloading" aria-hidden="true" tabindex="-1"></iframe></div>
+  <div class="armnote" id="armbox" hidden><button id="arm">Make skipping instant</button><p id="armtip">One time per visit. A second player appears. Tap its play button once and it pauses itself.</p></div>
   <div class="vote"><button class="dn" id="down" aria-label="Thumbs down">Nah</button><button class="upb" id="up" aria-label="Keep this track" aria-pressed="false">Keep</button></div>
   <div class="row2"><button id="back">Back</button><button id="skip">Next</button></div>
   <a id="dl" class="dlb" target="_blank" rel="noopener">Free download</a>
@@ -76,15 +80,19 @@ let trail=[];
 const setNow=id=>{try{localStorage.setItem(NK,id)}catch(e){}};
 let genre='All',queue=[],cur=null,widget=null;
 const OPTS='&color=%23ffb547&hide_related=true&show_comments=false&show_reposts=false&visual=false';
-const PL=[0,1].map(i=>({i,el:null,w:null,id:null,ready:false,want:false}));let act=0;
+const PL=[0,1].map(i=>({i,el:null,w:null,id:null,ready:false,want:false,playing:false,armed:false}));let act=0;
 const tu=id=>'https://api.soundcloud.com/tracks/'+id;
 function loadInto(p,id,play){p.id=id;p.ready=false;p.want=play;
   if(!p.w){p.el=$('sc'+p.i);p.el.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(tu(id))+OPTS+'&auto_play='+(play?'true':'false');p.w=SC.Widget(p.el);
     p.w.bind(SC.Widget.Events.READY,()=>{p.ready=true;if(p.want&&p.i===act)p.w.play();if(p.i===act)meta()});
-    p.w.bind(SC.Widget.Events.FINISH,()=>{if(p.i===act)next(true)});
+    p.w.bind(SC.Widget.Events.FINISH,()=>{p.playing=false;if(p.i===act)next(true)});
+    p.w.bind(SC.Widget.Events.PLAY,()=>{p.playing=true;p.armed=true;if(p.i!==act){p.w.pause();p.el.classList.remove('arming');p.el.classList.add('standby')}armUI()});
+    p.w.bind(SC.Widget.Events.PAUSE,()=>{p.playing=false});
   } else p.w.load(tu(id),{auto_play:!!play,color:'#ffb547',hide_related:true,show_comments:false,show_reposts:false,visual:false,callback:()=>{p.ready=true;if(p.want&&p.i===act)p.w.play();if(p.i===act)meta()}});}
+function armUI(){const box=$('armbox');if(!box)return;const sb=PL[1-act];box.hidden=!(PL[act].armed&&sb.w&&!sb.armed)}
+$('arm').onclick=()=>{const sb=PL[1-act];if(!sb.el)return;sb.el.classList.remove('standby');sb.el.classList.add('arming');sb.el.removeAttribute('aria-hidden');sb.el.style.pointerEvents='auto';$('armtip').textContent='Tap the play button in the player that just appeared.'};
 function preload(){const nx=queue[0];const sb=PL[1-act];if(nx&&sb.id!==nx.id)loadInto(sb,nx.id,false)}
-function swapTo(i){act=i;PL.forEach(p=>p.el&&p.el.classList.toggle('standby',p.i!==act));PL[act].el&&PL[act].el.removeAttribute('aria-hidden');PL[1-act].el&&PL[1-act].el.setAttribute('aria-hidden','true');widget=PL[act].w}
+function swapTo(i){act=i;PL.forEach(p=>{if(p.el){p.el.classList.remove('arming');p.el.style.pointerEvents=''}});setTimeout(armUI,0);PL.forEach(p=>p.el&&p.el.classList.toggle('standby',p.i!==act));PL[act].el&&PL[act].el.removeAttribute('aria-hidden');PL[1-act].el&&PL[1-act].el.setAttribute('aria-hidden','true');widget=PL[act].w}
 const $=id=>document.getElementById(id);
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(P))}catch(e){}};
 const genres=['All',...new Set(ALL.map(t=>t.g))];
@@ -103,9 +111,10 @@ function next(auto,pick,fromBack){
   show({title:cur.t||'Loading next track',artist:cur.a||''});
   const first=!PL[act].w, A=PL[act], S=PL[1-act];
   if(A.w)A.w.pause();
-  if(S.id===cur.id&&S.w){swapTo(S.i);S.want=true;if(S.ready){S.w.seekTo(0);S.w.play();meta()}}
+  if(S.id===cur.id&&S.w&&S.armed&&S.ready){swapTo(S.i);S.want=true;S.w.seekTo(0);S.w.play();meta();
+    const want=cur.id;setTimeout(()=>{if(cur&&cur.id===want&&!S.playing&&act===S.i){S.armed=false;swapTo(A.i);loadInto(A,want,true);widget=A.w}},1500)}
   else{loadInto(A,cur.id,!first);widget=A.w}
-  setTimeout(preload,first?2500:600);
+  setTimeout(()=>{preload();armUI()},first?2500:600);
 }
 function meta(){widget=PL[act].w;if(!widget)return;widget.getCurrentSound(s=>{if(!s||!cur)return;cur.title=cur.t||s.title;cur.artist=s.user&&s.user.username;cur.sg=s.genre||'';cur.tags=(s.tag_list||'').match(/"[^"]+"|\S+/g)||[];cur.url=s.permalink_url;show({title:cur.title,artist:cur.artist+(s.genre?' · '+s.genre:'')})})}
 function vote(v){if(!cur)return;if(v==='up'&&P[cur.id]&&P[cur.id].v==='up'){delete P[cur.id];save();const h0=H.find(x=>x.id===cur.id);if(h0){delete h0.v;saveH()}render();renderH();upState();return}P[cur.id]={v,title:cur.t||cur.title||'',artist:cur.a||cur.artist||'',g:cur.g,sg:cur.sg||'',tags:(cur.tags||[]).slice(0,8).map(x=>x.replace(/"/g,'')),dl:cur.dl,url:cur.url||''};save();const h=H.find(x=>x.id===cur.id);if(h){h.v=v;saveH()}render();renderH();upState();if(v==='down')next()}
