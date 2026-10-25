@@ -27,6 +27,8 @@ iframe{width:100%;height:166px;border:0;border-radius:10px;background:#000}
 .vote button{min-height:72px;border-radius:14px;border:0;font:900 22px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
 .dn{background:var(--down)}.upb{background:var(--up)}
 .upb[aria-pressed=true]{background:transparent;color:var(--up);box-shadow:inset 0 0 0 3px var(--up)}
+.dlb{min-height:46px;border-radius:12px;border:1px solid var(--amber);color:var(--amber);font:600 14px var(--body);display:flex;align-items:center;justify-content:center;text-decoration:none}
+#back:disabled{opacity:.35}
 #skip{background:var(--fg);color:var(--ink);border-color:var(--fg);font:900 18px var(--display);letter-spacing:.06em;text-transform:uppercase}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row2 a,.row2 button{min-height:46px;border-radius:12px;border:1px solid var(--rule);background:transparent;color:var(--fg);font:600 14px var(--body);display:flex;align-items:center;justify-content:center;text-decoration:none}
@@ -47,11 +49,13 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offs
   <div class="sub" id="artist">Free downloads from this week's Hypeddit charts</div>
   <iframe id="sc" allow="autoplay" title="SoundCloud player"></iframe>
   <div class="vote"><button class="dn" id="down" aria-label="Thumbs down">Nah</button><button class="upb" id="up" aria-label="Keep this track" aria-pressed="false">Keep</button></div>
-  <div class="row2"><button id="skip">Next</button><a id="dl" target="_blank" rel="noopener">Free download</a></div>
+  <div class="row2"><button id="back">Back</button><button id="skip">Next</button></div>
+  <a id="dl" class="dlb" target="_blank" rel="noopener">Free download</a>
 </section>
 <h2>Your sound so far</h2>
 <div class="style" id="style"><span>Thumb a few tracks and your style shows up here.</span></div>
 <h2>Keeps</h2>
+<div class="note">Tap one to play it again.</div>
 <div class="likes" id="likes"></div>
 <h2>Played</h2>
 <div class="note">Every track you have heard, newest first. Tap one to play it again.</div>
@@ -67,6 +71,7 @@ let P={};try{P=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}
 const HK='cratedig.history.v1',NK='cratedig.now.v1';
 let H=[];try{H=JSON.parse(localStorage.getItem(HK)||'[]')}catch(e){}
 const saveH=()=>{try{localStorage.setItem(HK,JSON.stringify(H.slice(0,500)))}catch(e){}};
+let trail=[];
 const setNow=id=>{try{localStorage.setItem(NK,id)}catch(e){}};
 let genre='All',queue=[],cur=null,widget=null,loaded=false;
 const $=id=>document.getElementById(id);
@@ -77,8 +82,10 @@ $('genres').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;genre=b.d
 function build(){const heard=new Set(H.map(h=>h.id));queue=ALL.filter(t=>(genre==='All'||t.g===genre)&&!P[t.id]&&!heard.has(t.id));if(!queue.length)queue=ALL.filter(t=>(genre==='All'||t.g===genre)&&!P[t.id]);for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]]}}
 function upState(){const k=!!(cur&&P[cur.id]&&P[cur.id].v==='up');$('up').setAttribute('aria-pressed',k);$('up').textContent=k?'Kept':'Keep'}
 function show(meta){upState();$('title').textContent=meta.title||'Loading';$('artist').textContent=meta.artist||'';$('genre').textContent=cur?cur.g:''}
-function next(auto,pick){
+function next(auto,pick,fromBack){
+  if(cur&&!fromBack)trail.push(cur);
   cur=pick||queue.shift();
+  setTimeout(()=>{$('back').disabled=!trail.length},0);
   if(cur){setNow(cur.id);H=H.filter(h=>h.id!==cur.id);H.unshift({id:cur.id,t:cur.t,a:cur.a,g:cur.g,dl:cur.dl,at:Date.now()});saveH();renderH()}
   if(!cur){show({title:'You went through every track in this genre',artist:'Pick another genre above'});return}
   $('dl').href='https://hypeddit.com/track/'+cur.dl;
@@ -92,6 +99,7 @@ function next(auto,pick){
 function meta(){widget.getCurrentSound(s=>{if(!s||!cur)return;cur.title=cur.t||s.title;cur.artist=s.user&&s.user.username;cur.sg=s.genre||'';cur.tags=(s.tag_list||'').match(/"[^"]+"|\S+/g)||[];cur.url=s.permalink_url;show({title:cur.title,artist:cur.artist+(s.genre?' · '+s.genre:'')})})}
 function vote(v){if(!cur)return;if(v==='up'&&P[cur.id]&&P[cur.id].v==='up'){delete P[cur.id];save();const h0=H.find(x=>x.id===cur.id);if(h0){delete h0.v;saveH()}render();renderH();upState();return}P[cur.id]={v,title:cur.t||cur.title||'',artist:cur.a||cur.artist||'',g:cur.g,sg:cur.sg||'',tags:(cur.tags||[]).slice(0,8).map(x=>x.replace(/"/g,'')),dl:cur.dl,url:cur.url||''};save();const h=H.find(x=>x.id===cur.id);if(h){h.v=v;saveH()}render();renderH();upState();if(v==='down')next()}
 $('up').onclick=()=>vote('up');$('down').onclick=()=>vote('down');$('skip').onclick=()=>next();
+$('back').onclick=()=>{const p=trail.pop();if(!p)return;if(cur)queue.unshift(cur);next(false,p,true)};
 function profile(){const sc={};const add=(k,w)=>{k=(k||'').toLowerCase().trim();if(!k||k.length<3||/free|download|hypeddit|^\d+$/.test(k))return;sc[k]=(sc[k]||0)+w};
   Object.values(P).forEach(p=>{const w=p.v==='up'?1:-1;add(p.sg,w*2);add(p.g,w);(p.tags||[]).forEach(t=>add(t,w));add(p.artist,w*1.5)});
   return Object.entries(sc).sort((a,b)=>b[1]-a[1])}
@@ -99,7 +107,7 @@ function render(){const v=Object.values(P);const ups=v.filter(p=>p.v==='up');
   $('tally').innerHTML=`<b>${ups.length}</b> keeps<br>${v.length} of ${ALL.length} heard`;
   const pr=profile();const pos=pr.filter(x=>x[1]>0).slice(0,12),neg=pr.filter(x=>x[1]<0).slice(-6);
   $('style').innerHTML=(pos.length||neg.length)?pos.map(x=>`<span>${esc(x[0])}</span>`).join('')+neg.map(x=>`<span class="neg">${esc(x[0])}</span>`).join(''):'<span>Thumb a few tracks and your style shows up here.</span>';
-  $('likes').innerHTML=ups.length?ups.map(p=>`<div class="like"><div><div class="t">${esc(p.title||'Untitled')}</div><div class="s">${esc(p.artist||'')} · ${esc(p.g)}</div></div><a href="https://hypeddit.com/track/${p.dl}" target="_blank" rel="noopener">Download</a></div>`).join(''):'<div class="note">Nothing kept yet.</div>'}
+  $('likes').innerHTML=ups.length?Object.entries(P).filter(([,p])=>p.v==='up').map(([id,p])=>`<div class="like"><div data-replay="${id}" style="cursor:pointer"><div class="t">${esc(p.title||'Untitled')}</div><div class="s">${esc(p.artist||'')} · ${esc(p.g)}</div></div><a href="https://hypeddit.com/track/${p.dl}" target="_blank" rel="noopener">Download</a></div>`).join(''):'<div class="note">Nothing kept yet.</div>'}
 function renderH(){const el=$('hist');if(!el)return;el.innerHTML=H.length?H.map(h=>`<div class="like"><div data-replay="${h.id}" style="cursor:pointer"><div class="t">${esc(h.t||'Untitled')}</div><div class="s">${esc(h.a||'')} · ${esc(h.g)}${h.v?' · '+(h.v==='up'?'Kept':'Nah'):''} · ${new Date(h.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</div></div><a href="https://hypeddit.com/track/${h.dl}" target="_blank" rel="noopener">Download</a></div>`).join(''):'<div class="note">Nothing played yet.</div>'}
 document.addEventListener('click',e=>{const r=e.target.closest('[data-replay]');if(!r)return;const t=ALL.find(x=>x.id===r.dataset.replay);if(t){queue=queue.filter(x=>x.id!==t.id);next(false,t);window.scrollTo({top:0,behavior:'smooth'})}});
 const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
